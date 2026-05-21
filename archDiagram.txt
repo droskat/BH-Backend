@@ -1,0 +1,42 @@
+[ Client ] ---> (1. GET /images/:id) ---> [ Go API Layer ]
+                                                 |
+                     +---------------------------+---------------------------+
+                     | (2. Check Key)                                        | (4. If Cache Miss: Query DB)
+                     v                                                       v
+             [ Redis Cache ]                                       [ Apache Cassandra ]
+                     |                                                       |
+         (Hit: Return Data Instantly)                                        | (5. Return Row)
+                     |                                                       v
+                     +<--- (6. Pipeline SET with TTL & Jitter) --------------+
+                     |
+                     v
+         (7. Return Data to Client)
+
+
+
+
+                                  +-------------------+
+                                  |     React UI      |
+                                  +---------+---------+
+                                            |
+                         +------------------+------------------+
+                         | (Reads/Metadata) | (Binary Upload)  | (Direct Upload)
+                         v                  v                  v
++------------------------+--------+  +------+------+  +--------+--------+
+|       API Layer (Go + Gin)      |  | Redis Cache |  |  S3 Object Store|
+| (Auth, Meta Validation, PreSign)|  | (Cold TTL)  |  | (Private Vault) |
++------------------------+--------+  +------+------+  +--------+--------+
+                         |                                     |
+                         | (Async Push)                        | (S3 Upload Event)
+                         v                                     v
++------------------------+--------+                   +--------+--------+
+|      Kafka Message Broker       |                   | Image Analysis  |
+|  (Idempotent Cluster Nodes)     |                   |  Worker (Go)    |
++------------------------+--------+                   +--------+--------+
+                         |                                     |
+                         | (Batch Consumer Loop)               | (Worker Async Write)
+                         v                                     v
++------------------------+-------------------------------------+--------+
+|                          Primary Database Cluster                     |
+|                             (Apache Cassandra)                        |
++-----------------------------------------------------------------------+
